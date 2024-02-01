@@ -1,6 +1,6 @@
 {
   "name": "@tsxper/log-stream",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Stream-based NodeJS logger",
   "scripts": {
     "test": "jest",
@@ -28,7 +28,8 @@
   },
   "keywords": [
     "logger",
-    "streams"
+    "streams",
+    "backpressure"
   ],
   "devDependencies": {
     "@types/jest": "^29.5.11",

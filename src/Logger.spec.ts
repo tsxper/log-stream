@@ -1,6 +1,6 @@
 import { Duplex } from 'node:stream';
 import { TextEncoderStream } from 'node:stream/web';
-import { LOG_LEVEL_DEBUG, Logger, DEFAULT_FORMAT, LOG_LEVEL_INFO, LOG_LEVEL_ERROR, LOG_LEVEL_WARN, LOG_LEVEL_NONE } from './index';
+import { LOG_LEVEL_DEBUG, Logger, DEFAULT_FORMAT, LOG_LEVEL_INFO, LOG_LEVEL_ERROR, LOG_LEVEL_WARN, LOG_LEVEL_NONE, LOG_LEVEL } from './index';
 
 describe('Logger', () => {
   it('should log all for LOG_LEVEL_DEBUG', async () => {
@@ -11,7 +11,7 @@ describe('Logger', () => {
       .setScope('test')
       .setDepth(2);
 
-    const debugPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));;;
+    const debugPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.debug('debug', { o: { a: 1 } });
     const debugRes = JSON.parse((await debugPr).toString()) as DEFAULT_FORMAT;
     expect(debugRes).toMatchObject({ d: { o: { a: 1 } }, n: 'debug', s: 'test', l: LOG_LEVEL_DEBUG });
@@ -19,21 +19,21 @@ describe('Logger', () => {
     expect(debugRes.e).not.toBeDefined();
 
 
-    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));;;
+    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.log('2');
     const infoRes = JSON.parse((await infoPr).toString()) as DEFAULT_FORMAT;
     expect(infoRes).toMatchObject({ n: '2', l: LOG_LEVEL_INFO, s: 'test' });
     expect(infoRes.d).not.toBeDefined();
     expect(infoRes.e).not.toBeDefined();
 
-    const warnPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));;;
+    const warnPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.warn('test warn', { o: 'o' });
     const warnRes = JSON.parse((await warnPr).toString()) as DEFAULT_FORMAT;
 
     expect(warnRes).toMatchObject({ n: 'test warn', l: LOG_LEVEL_WARN, s: 'test', d: { o: 'o' } });
     expect(warnRes?.e).not.toBeDefined;
 
-    const errPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));;
+    const errPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.error('test error', new Error('3'));
     const errRes = JSON.parse((await errPr).toString()) as DEFAULT_FORMAT;
 
@@ -42,6 +42,10 @@ describe('Logger', () => {
     expect(errRes?.e?.name).toBe('Error');
     expect(errRes?.e?.stack).toBeDefined();
     expect(infoRes.d).not.toBeDefined();
+
+    expect(Logger.getIsBackpressure('out')).toBe(false);
+    expect(Logger.getIsBackpressure('err')).toBe(false);
+    expect(Logger.getBufferSize()).toBe(0);
 
     stream.destroy();
   });
@@ -57,57 +61,13 @@ describe('Logger', () => {
     const stream = Duplex.from(streamText);
     const logger = new Logger(LOG_LEVEL_DEBUG, 'circular');
     Logger.replaceLogStreams(stream, stream);
-    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));;
+    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.log('cycles', { a });
     const infoRes = JSON.parse((await infoPr).toString()) as DEFAULT_FORMAT;
     expect(infoRes?.d).toBe('{ a: <ref *1> [ A { a: [Circular *1] } ] }');
     expect(infoRes?.s).toBe('circular');
     expect(infoRes?.n).toBe('cycles');
     expect(infoRes?.e).not.toBeDefined();
-
-    stream.destroy();
-  });
-
-  it('should output without colors when switched to visual format with colors disabled', async () => {
-    const streamText = new TextEncoderStream();
-    const stream = Duplex.from(streamText);
-    Logger.replaceLogStreams(stream, stream);
-    const logger = new Logger(LOG_LEVEL_DEBUG, 'VISUAL').setColors(false).setOutputFormat('visual');
-    Logger.replaceLogStreams(stream, stream);
-    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
-    logger.log('test msg', [1]);
-    const infoRes = (await infoPr).toString() as string;
-    expect(infoRes).toMatch(/INFO \(VISUAL\): test msg \[[\n\s]+1[\n]\]/);
-
-    stream.destroy();
-  });
-
-  it('should output with colors when switched to visual format', async () => {
-    const streamText = new TextEncoderStream();
-    const stream = Duplex.from(streamText);
-    Logger.replaceLogStreams(stream, stream);
-    const logger = new Logger(LOG_LEVEL_DEBUG, 'VISUAL').setOutputFormat('visual');
-    Logger.replaceLogStreams(stream, stream);
-
-    const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
-    logger.log('test msg');
-    const infoRes = (await infoPr).toString() as string;
-    expect(infoRes).toMatch(/[\x1B]\[32mINFO[\x1B]\[0m \(VISUAL\): [\x1B]\[36mtest msg[\x1B]\[0m/);
-
-    const debugPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
-    logger.debug('test msg');
-    const debugRes = (await debugPr).toString() as string;
-    expect(debugRes).toMatch(/[\x1B]\[34mDEBUG[\x1B]\[0m \(VISUAL\): [\x1B]\[36mtest msg[\x1B]\[0m/);
-
-    const warnPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
-    logger.warn('test msg');
-    const warnRes = (await warnPr).toString() as string;
-    expect(warnRes).toMatch(/[\x1B]\[33mWARN[\x1B]\[0m \(VISUAL\): [\x1B]\[36mtest msg[\x1B]\[0m/);
-
-    const errPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
-    logger.error('test msg', new Error(''));
-    const errRes = (await errPr).toString() as string;
-    expect(errRes).toMatch(/[\x1B]\[31mERROR[\x1B]\[0m \(VISUAL\): [\x1B]\[36mtest msg[\x1B]\[0m/);
 
     stream.destroy();
   });
@@ -138,4 +98,69 @@ describe('Logger', () => {
 
     stream.destroy();
   });
+
+  it('should handle backpressure', async () => {
+    const streamText = new TextEncoderStream();
+    const stream = Duplex.from(streamText);
+    Logger.replaceLogStreams(stream, stream);
+    const maxSize = 2;
+    Logger.setBufferHeighWatermark(maxSize);
+    const logger = new Logger(LOG_LEVEL_DEBUG, 'test');
+
+    expect(logger.debug('pass1')).toBe(true);
+    expect(logger.debug('pass2')).toBe(true);
+    expect(logger.debug('pass3')).toBe(true);
+    expect(Logger.getBufferSize()).toBe(0);
+
+    const originWrite = stream.write;
+    const writeMock = jest.fn(() => false);
+
+    // stream write returns "false"
+    stream.write = writeMock;
+    console.log({ stage: "start buffer overflow" })
+    expect(logger.debug('ok1')).toBe(true);
+    expect(Logger.getBufferSize()).toBe(0);
+    expect(logger.log('ok2')).toBe(true);
+    expect(Logger.getBufferSize()).toBe(1);
+    expect(logger.log('ok3')).toBe(true);
+    expect(Logger.getBufferSize()).toBe(maxSize);
+    expect(logger.warn('fail1')).toBe(false); // buffer overflow
+    expect(Logger.getBufferSize()).toBe(maxSize);
+    expect(logger.error('fail2', new Error(''))).toBe(false); // buffer overflow
+    expect(Logger.getBufferSize()).toBe(maxSize);
+    expect(writeMock.mock.calls).toHaveLength(1);
+    expect(Logger.getIsBackpressure('out')).toBe(true);
+    expect(Logger.getIsBackpressure('err')).toBe(false);
+
+    stream.write = originWrite;
+    let events = 0;
+    const buffPr = new Promise<DEFAULT_FORMAT>((resolve) => stream.on('data', (d: Buffer) => {
+      const res = JSON.parse(d.toString()) as DEFAULT_FORMAT;
+      if (res.n.indexOf('ok') !== 0) return;
+      events += 1;
+      if (events === maxSize) resolve(res);
+    }));
+    stream.emit('drain');
+    const buffRes = await buffPr;
+    expect(buffRes.n).toBe('ok3');
+    expect(Logger.getBufferSize()).toBe(0);
+    expect(Logger.getIsBackpressure('out')).toBe(false);
+    expect(Logger.getIsBackpressure('err')).toBe(false);
+    stream.destroy();
+  });
+});
+
+it('should change message format', async () => {
+  const streamText = new TextEncoderStream();
+  const stream = Duplex.from(streamText);
+  Logger.replaceLogStreams(stream, stream);
+  const logger = new Logger(LOG_LEVEL_INFO, 'test');
+  logger.setFormatter((ts: number, name: string, scope: string, level: LOG_LEVEL, data?: unknown) => {
+    return 'abc';
+  });
+  const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
+  logger.log('test', null);
+  const infoRes = (await infoPr).toString().trim();
+  expect(infoRes).toBe('abc');
+  stream.destroy();
 });
