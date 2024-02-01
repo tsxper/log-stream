@@ -1,15 +1,15 @@
-import { LOG_LEVEL_DEBUG, Logger, OUTPUT_FORMAT } from '../src';
+import { LOG_LEVEL_DEBUG, Logger } from '../src';
 
 class A {
   prop = 'abc';
   constructor(public a: A[]) { }
 }
 
-export const log = (scope: string, format: OUTPUT_FORMAT = 'compact') => {
+export const log = (scope: string) => {
   const arr: A[] = [];
   const obj = new A(arr);
   arr.push(obj);
-  const logger = new Logger(LOG_LEVEL_DEBUG, scope).setOutputFormat(format);
+  const logger = new Logger(LOG_LEVEL_DEBUG, scope);
   logger.setDepth(1);
   logger.log('Circular refs', { arr });
   logger.debug('Debug Message', {

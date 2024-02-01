@@ -1,5 +1,5 @@
-import { Console } from 'console';
 import util from 'util';
+import { EOL } from 'os';
 
 export const LOG_LEVEL_NONE = 0;
 export const LOG_LEVEL_ERROR = 1;
@@ -8,8 +8,8 @@ export const LOG_LEVEL_INFO = 3;
 export const LOG_LEVEL_DEBUG = 4;
 
 export type LOG_LEVEL = typeof LOG_LEVEL_NONE | typeof LOG_LEVEL_ERROR | typeof LOG_LEVEL_INFO | typeof LOG_LEVEL_WARN | typeof LOG_LEVEL_DEBUG;
-export type LOG_FORMATTER = (name: string, scope: string, level: LOG_LEVEL, data?: unknown) => string;
-export type OUTPUT_FORMAT = 'compact' | 'visual';
+type EPOCH_MS = number;
+export type LOG_FORMATTER = (ts: EPOCH_MS, name: string, scope: string, level: LOG_LEVEL, data?: unknown) => string;
 export type DEFAULT_FORMAT = {
   t: number;
   l: LOG_LEVEL;
@@ -19,6 +19,13 @@ export type DEFAULT_FORMAT = {
   e?: Error;
 };
 
+type TARGET = 'err' | 'out';
+
+type BUF_RECORD = {
+  target: TARGET;
+  data: string;
+};
+
 export class Logger {
   protected scope: string;
   protected logLevel: LOG_LEVEL;
@@ -26,9 +33,7 @@ export class Logger {
   protected logInfo: boolean;
   protected logWarn: boolean;
   protected logError: boolean;
-  protected colors = true;
   protected depth = 2;
-  protected outputFormat: OUTPUT_FORMAT = 'compact';
   protected logLevelsMap = {
     [LOG_LEVEL_NONE]: '',
     [LOG_LEVEL_ERROR]: 'ERROR',
@@ -36,9 +41,18 @@ export class Logger {
     [LOG_LEVEL_WARN]: 'WARN',
     [LOG_LEVEL_DEBUG]: 'DEBUG',
   };
-  protected formatterCompact: LOG_FORMATTER;
-  protected formatterVisual: LOG_FORMATTER;
-  protected static logger: Console;
+  protected formatter: LOG_FORMATTER;
+  protected static stdout: NodeJS.WritableStream;
+  protected static stderr: NodeJS.WritableStream;
+  protected static buffer: Record<TARGET, BUF_RECORD[]> = {
+    'err': [],
+    'out': [],
+  };
+  protected static bufferHeighWatermark = 100000;
+  protected static isBackpressure: Record<TARGET, boolean> = {
+    'err': false,
+    'out': false,
+  };
 
   constructor(logLevel: LOG_LEVEL = LOG_LEVEL_NONE, scope: string = '') {
     this.scope = scope;
@@ -47,32 +61,33 @@ export class Logger {
     this.logWarn = logLevel >= LOG_LEVEL_WARN;
     this.logInfo = logLevel >= LOG_LEVEL_INFO;
     this.logDebug = logLevel >= LOG_LEVEL_DEBUG;
-    this.formatterCompact = this.defaultFormatterCompact.bind(this);
-    this.formatterVisual = this.defaultFormatterVisual.bind(this);
-    if (!Logger.logger) Logger.logger = new Console(process.stdout, process.stderr);
+    this.formatter = this.defaultFormatter.bind(this);
   }
 
-  static replaceLogStreams(stdOut: NodeJS.WritableStream, stdErr: NodeJS.WritableStream): void {
-    Logger.logger = new Console(stdOut, stdErr);
+  static replaceLogStreams(stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream): void {
+    Logger.stdout = stdout;
+    Logger.stderr = stderr;
   }
 
-  setFormatterCompact(formatter: LOG_FORMATTER): this {
-    this.formatterCompact = formatter;
+  static setBufferHeighWatermark(mark: number): void {
+    Logger.bufferHeighWatermark = mark;
+  }
+
+  static getIsBackpressure(target: TARGET): boolean {
+    return Logger.isBackpressure[target] === true;
+  }
+
+  static getBufferSize(): number {
+    return Logger.buffer.err.length + Logger.buffer.out.length;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
     return this;
   }
 
-  setFormatterVisual(formatter: LOG_FORMATTER): this {
-    this.formatterVisual = formatter;
-    return this;
-  }
-
-  setOutputFormat(format: OUTPUT_FORMAT): this {
-    this.outputFormat = format;
-    return this;
-  }
-
-  setColors(useColors: boolean): this {
-    this.colors = useColors;
+  setFormatter(formatter: LOG_FORMATTER): this {
+    this.formatter = formatter;
     return this;
   }
 
@@ -83,31 +98,61 @@ export class Logger {
 
   clone(scope: string): Logger {
     return new Logger(this.logLevel, scope)
-      .setOutputFormat(this.outputFormat)
-      .setFormatterCompact(this.formatterCompact)
-      .setFormatterVisual(this.formatterVisual)
-      .setColors(this.colors);
+      .setDepth(this.depth)
+      .setFormatter(this.formatter);
   }
 
-  debug(name: string, data?: unknown): void {
-    this.logDebug && Logger.logger.log(this.format(name, LOG_LEVEL_DEBUG, data));
+  debug(name: string, data?: unknown): boolean {
+    return this.logDebug && this.pushLog({ data: this.format(name, LOG_LEVEL_DEBUG, data), target: 'out' });
   }
 
-  log(name: string, data?: unknown): void {
-    this.logInfo && Logger.logger.log(this.format(name, LOG_LEVEL_INFO, data));
+  log(name: string, data?: unknown): boolean {
+    return this.logInfo && this.pushLog({ data: this.format(name, LOG_LEVEL_INFO, data), target: 'out' });
   }
 
-  warn(name: string, data?: unknown): void {
-    this.logWarn && Logger.logger.log(this.format(name, LOG_LEVEL_WARN, data));
+  warn(name: string, data?: unknown): boolean {
+    return this.logWarn && this.pushLog({ data: this.format(name, LOG_LEVEL_WARN, data), target: 'out' });
   }
 
-  error(name: string, data: Error): void {
-    this.logError && Logger.logger.error(this.format(name, LOG_LEVEL_ERROR, data));
+  error(name: string, data: Error): boolean {
+    return this.logError && this.pushLog({ data: this.format(name, LOG_LEVEL_ERROR, data), target: 'err' });
   }
 
-  setDepth(depth: number): this {
-    this.depth = depth;
-    return this;
+  protected pushLog(entry: BUF_RECORD): boolean {
+    const len = Logger.getBufferSize();
+    const isSpace = len < Logger.bufferHeighWatermark;
+    if (!isSpace) {
+      return false;
+    }
+    Logger.buffer[entry.target].push(entry);
+    Logger.restart();
+    return true;
+  }
+
+  protected static restart(): void {
+    Logger.write(Logger.buffer.err, 'err');
+    Logger.write(Logger.buffer.out, 'out');
+  }
+
+  protected static write(buffer: BUF_RECORD[], target: TARGET): boolean {
+    if (Logger.isBackpressure[target]) {
+      return false;
+    }
+    const stream = target === 'err' ? Logger.stderr : Logger.stdout;
+    do {
+      const record = buffer.shift();
+      if (!record) break;
+      const res = stream.write(`${record.data}${EOL}`);
+      if (!res) {
+        Logger.isBackpressure[target] = true;
+        stream.once('drain', () => {
+          Logger.isBackpressure[target] = false;
+          Logger.restart();
+        });
+        break;
+      }
+    } while (buffer.length > 0);
+    return Logger.isBackpressure[target] === false;
   }
 
   protected dataToErr(data?: unknown): Error | null {
@@ -119,13 +164,13 @@ export class Logger {
     return err;
   }
 
-  protected defaultFormatterCompact(name: string, scope: string, level: LOG_LEVEL, data?: unknown): string {
+  protected defaultFormatter(ts: number, name: string, scope: string, level: LOG_LEVEL, data?: unknown): string {
     const err = this.dataToErr(data);
     const input = err ?? data;
     const isCircular = util.format('%j', input) === '[Circular]';
     const payload = isCircular ? util.formatWithOptions({ depth: this.depth }, '%O', input) : input;
     const msg: DEFAULT_FORMAT = {
-      t: new Date().getTime(),
+      t: ts,
       l: level,
       s: scope,
       n: name,
@@ -134,61 +179,8 @@ export class Logger {
     return util.format('%j', msg);
   }
 
-  protected defaultFormatterVisual(name: string, scope: string, level: LOG_LEVEL, data?: unknown): string {
-    const err = this.dataToErr(data);
-    let logLevelC = this.logLevelsMap[level];
-    let titleC = name;
-    const formats: string[] = ['%s', '%s', '(%s):', '%s'];
-    if (data) {
-      formats.push('%O');
-    }
-    if (this.colors) {
-      if (level === LOG_LEVEL_DEBUG) {
-        logLevelC = this.wrapInBlue(logLevelC);
-      } else if (level === LOG_LEVEL_INFO) {
-        logLevelC = this.wrapInGreen(logLevelC);
-      } else if (level === LOG_LEVEL_WARN) {
-        logLevelC = this.wrapInYellow(logLevelC);
-      } else if (level === LOG_LEVEL_ERROR) {
-        logLevelC = this.wrapInRed(logLevelC);
-      }
-      titleC = this.wrapInCyan(titleC);
-    }
-    const params = [new Date().toISOString(), logLevelC, scope, titleC, err || data].filter((v) => v !== undefined);
-    return util.formatWithOptions({ compact: false, depth: this.depth }, formats.join(' '), ...params);
-  }
-
-  protected wrapInRed(str: string): string {
-    const redCode = 31;
-    return this.wrapInColor(redCode, str);
-  }
-
-  protected wrapInYellow(str: string): string {
-    const redCode = 33;
-    return this.wrapInColor(redCode, str);
-  }
-
-  protected wrapInGreen(str: string): string {
-    const greenCode = 32;
-    return this.wrapInColor(greenCode, str);
-  }
-
-  protected wrapInBlue(str: string): string {
-    const blueCode = 34;
-    return this.wrapInColor(blueCode, str);
-  }
-
-  protected wrapInCyan(str: string): string {
-    const cyanCode = 36;
-    return this.wrapInColor(cyanCode, str);
-  }
-
-  protected wrapInColor(color: number, str: string): string {
-    return `\x1b[${color}m${str}\x1b[0m`;
-  }
-
   protected format(name: string, level: LOG_LEVEL, data?: unknown): string {
-    const formatter = this.outputFormat === 'compact' ? this.formatterCompact : this.formatterVisual;
-    return formatter(name, this.scope, level, data);
+    const formatter = this.formatter;
+    return formatter(new Date().getTime(), name, this.scope, level, data);
   }
 }

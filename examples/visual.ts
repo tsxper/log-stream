@@ -1,3 +1,3 @@
 import { log } from './log';
 
-log('expanded', 'visual');
+log('expanded');

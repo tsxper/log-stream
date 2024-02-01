@@ -10,21 +10,27 @@
 Main features of the *@tsxper/log-stream* are:
 - simplicity;
 - small size;
+- supporting 2 streams with exclusive stream for errors;
+- back pressure support;
 - "compact" and colored "visual" output formats;
 - logging scopes;
 - logging data structures for debugging;
 - easy streams replacement;
 - circular references safety;
-- easy scopes spreading through cloning;
+- easy configuration spreading through cloning;
 
 ## Configuration
 
+### Create Logger instance
+
+```JavaScript
+const logger = new Logger(LOG_LEVEL_INFO, 'my service');
+```
+This will create a new logger instance with a scope "my service" that will write all logs of all levels up to INFO (this excludes only DEBUG) into default "stdout" and "stderr" output streams.
+
 ### Output Formats
 
-Currently 2 output formats are supported: "compact" (default) and "visual" (colored or not)
-
-#### Visual Format
-![Visual Format](https://raw.githubusercontent.com/tsxper/log-stream/main/examples/visual.png)
+Currently 2 output formats are supported: "compact" (default) and "visual" (optional dependency)
 
 #### Compact Format
 ![Compact Format](https://raw.githubusercontent.com/tsxper/log-stream/main/examples/compact.png)
@@ -40,10 +46,20 @@ Compact format message decoded:
 
 ```JavaScript
 const logger = new Logger(LOG_LEVEL_INFO, 'my service scope');
-logger.setOutputFormat('visual');
-logger.setColors(false); // disable colors for 'visual' output format
-// logger.setColors(true); // applies only to 'visual' output format
-// logger.setOutputFormat('compact'); // default
+```
+
+#### Visual Format
+![Visual Format](https://raw.githubusercontent.com/tsxper/log-stream/main/examples/visual.png)
+
+Install the visual formatter.
+```bash
+npm i @tsxper/log-stream-formatter-visual -D
+```
+
+See [tsxper/log-stream-formatter-visual](https://github.com/tsxper/log-stream-formatter-visual) docs on the GitHub for details.
+
+```JavaScript
+const logger = new Logger(LOG_LEVEL_INFO, 'my service scope');
 ```
 
 ### Log Levels
@@ -64,11 +80,13 @@ logger.error('error message', new Error('error'));
 
 ```TypeScript
 // TS interface
-debug(name: string, data?: unknown): void;
-log(name: string, data?: unknown): void;
-warn(name: string, data?: unknown): void;
-error(name: string, data: Error): void;
+debug(name: string, data?: unknown): boolean;
+log(name: string, data?: unknown): boolean;
+warn(name: string, data?: unknown): boolean;
+error(name: string, data: Error): boolean;
 ```
+
+Each logging method returns a boolean "true" when a log message was successfully enqueued.
 
 ### Log Scopes
 Log scope can be set in a constructor or later in *setScope()*
@@ -93,25 +111,39 @@ In case passed *data* object contains circular refs, such object is converted in
 ### Log Streams
 Two logs streams are supported: general logs stream and error log stream.
 Default log stream for error logs is *process.stderr*.
-Default log stream for general logs (all logs that are not errors) is process.stdout.
+Default log stream for general logs (all logs that are not errors) is *process.stdout*.
 
 ```TypeScript
 // replace log streams
 static replaceLogStreams(stdOut: NodeJS.WritableStream, stdErr: NodeJS.WritableStream): void;
 ```
 Calling *Logger.replaceLogStreams()* will make all existing *Logger* instances write into the new streams.
+> Note. Calling "Logger.replaceLogStreams()"" does not call "stream.destroy()" on previously used streams.
 
 ### Clone Logger
-Cloning a logger instance makes easy to create a new logger with a new scope but existing setting.
+Cloning a logger instance makes easy to create a new logger with a new scope but existing settings (like formatter, depth).
 
 ```JavaScript
 const logger2 = logger1.clone('new scope');
 ```
 
-### Formatters
-Output formats are configurable through setting custom formatting functions.
+### Backpressure Support
+At a peak usage, a stream can report that it is not ready to receive new data anymore.
+In a meanwhile Logger can continue accepting new log messages and puts them into a buffer.
+All new messages are buffering and will be sent into the stream as soon as the stream reports readiness ("drain" event) to receive new porting of data.
+
+> Default buffer size (heigh watermark) is *100 000* items for both ("err" and "out") streams.
+> This can be changed by calling "Logger.setBufferHeighWatermark(newNumber)".
+> In case when backpressure event occurs, "Logger.getIsBackpressure(target)" call will return "true".
 
 ```TypeScript
-setFormatterCompact(formatter: LOG_FORMATTER): this;
-setFormatterVisual(formatter: LOG_FORMATTER): this;
+type TARGET = 'err' | 'out';
+static getIsBackpressure(target: TARGET): boolean;
+```
+
+### Formatters
+Output format is configurable through setting custom formatting function.
+
+```TypeScript
+setFormatter(formatter: LOG_FORMATTER): this;
 ```
