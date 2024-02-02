@@ -8,6 +8,7 @@
 *@tsxper/log-stream* is a TypeScript stream-based NodeJS logger.
 
 Main features of the *@tsxper/log-stream* are:
+- each log record is represented as JSON;
 - simplicity;
 - small size;
 - supporting 2 streams with exclusive stream for errors;
@@ -58,8 +59,15 @@ npm i @tsxper/log-stream-formatter-visual -D
 
 See [tsxper/log-stream-formatter-visual](https://github.com/tsxper/log-stream-formatter-visual) docs on the GitHub for details.
 
+```bash
+node server.js | npx @tsxper/log-stream-formatter-visual
+```
+
+Optional, replace the default formatter.
 ```JavaScript
 const logger = new Logger(LOG_LEVEL_INFO, 'my service scope');
+const formatter = new FormatterVisual();
+logger.setFormatter(formatter.formatter.bind(formatter));
 ```
 
 ### Log Levels
@@ -67,8 +75,8 @@ Possible log levels are:
 - *LOG_LEVEL_NONE*, or 0, no logs are logged;
 - *LOG_LEVEL_ERROR*, or 1, only "error" logs are logged;
 - *LOG_LEVEL_WARN*, or 2, "error" and "warn" logs are logged;
-- *LOG_LEVEL_INFO*, or 3, "error", "warn" and "info" logs will be logged;
-- *LOG_LEVEL_DEBUG*, or 4, "error", "warn", "info" and "debug" logs will be logged;
+- *LOG_LEVEL_INFO*, or 3, "error", "warn" and "info" logs are logged;
+- *LOG_LEVEL_DEBUG*, or 4, "error", "warn", "info" and "debug" logs are logged;
 
 ```JavaScript
 // JS example
@@ -110,8 +118,8 @@ In case passed *data* object contains circular refs, such object is converted in
 
 ### Log Streams
 Two logs streams are supported: general logs stream and error log stream.
-Default log stream for error logs is *process.stderr*.
-Default log stream for general logs (all logs that are not errors) is *process.stdout*.
+Default log stream for error and general logs is *process.stdout*.
+It's possible to change error stream to *process.stderr*.
 
 ```TypeScript
 // replace log streams
@@ -119,6 +127,24 @@ static replaceLogStreams(stdOut: NodeJS.WritableStream, stdErr: NodeJS.WritableS
 ```
 Calling *Logger.replaceLogStreams()* will make all existing *Logger* instances write into the new streams.
 > Note. Calling "Logger.replaceLogStreams()"" does not call "stream.destroy()" on previously used streams.
+
+### Handle Backslashes
+During write procedure into default streams, JSON string may become invalid because of stream strips slashes.
+
+```text
+Example: 
+"line\\n" can be written as "line\n".
+```
+
+This behavior will make JSON invalid for further parsing (Uncaught SyntaxError: Bad control character).
+
+To prevent this, double slashes are added by default.
+
+To disable adding extra slashes, call *Logger.setDoubleSlashes(false)*.
+
+```TypeScript
+static setDoubleSlashes(enabled: boolean): void
+``` 
 
 ### Clone Logger
 Cloning a logger instance makes easy to create a new logger with a new scope but existing settings (like formatter, depth).

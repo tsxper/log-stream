@@ -1,4 +1,4 @@
-import { LOG_LEVEL_DEBUG, Logger } from '../src';
+import { LOG_LEVEL_DEBUG, Logger } from '../src/index';
 
 class A {
   prop = 'abc';
@@ -11,7 +11,7 @@ export const log = (scope: string) => {
   arr.push(obj);
   const logger = new Logger(LOG_LEVEL_DEBUG, scope);
   logger.setDepth(1);
-  logger.log('Circular refs', { arr });
+  logger.log('Circular refs', arr);
   logger.debug('Debug Message', {
     k1: 'string 1',
     a: {
