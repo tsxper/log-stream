@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "@tsxper/log-stream-formatter-visual": "^1.0.3"
+  }
+}

@@ -3,6 +3,26 @@ import { TextEncoderStream } from 'node:stream/web';
 import { LOG_LEVEL_DEBUG, Logger, DEFAULT_FORMAT, LOG_LEVEL_INFO, LOG_LEVEL_ERROR, LOG_LEVEL_WARN, LOG_LEVEL_NONE, LOG_LEVEL } from './index';
 
 describe('Logger', () => {
+  it('should handle slashes', async () => {
+    const streamText = new TextEncoderStream();
+    const stream = Duplex.from(streamText);
+    Logger.replaceLogStreams(stream, stream);
+    Logger.setDoubleSlashes(true);
+    const logger = new Logger(LOG_LEVEL_DEBUG);
+    const pr1 = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
+    logger.debug('line1\nline2');
+    const res1 = JSON.parse((await pr1).toString()) as DEFAULT_FORMAT;
+    expect(res1.n).toBe('line1\\nline2');
+    
+    Logger.setDoubleSlashes(false);
+    const pr2 = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
+    logger.debug('line1\nline2');
+    const res2 = JSON.parse((await pr2).toString()) as DEFAULT_FORMAT;
+    expect(res2.n).toBe('line1\nline2');
+
+    stream.destroy();
+  });
+
   it('should log all for LOG_LEVEL_DEBUG', async () => {
     const streamText = new TextEncoderStream();
     const stream = Duplex.from(streamText);
@@ -117,7 +137,6 @@ describe('Logger', () => {
 
     // stream write returns "false"
     stream.write = writeMock;
-    console.log({ stage: "start buffer overflow" })
     expect(logger.debug('ok1')).toBe(true);
     expect(Logger.getBufferSize()).toBe(0);
     expect(logger.log('ok2')).toBe(true);

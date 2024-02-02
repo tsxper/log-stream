@@ -42,8 +42,8 @@ export class Logger {
     [LOG_LEVEL_DEBUG]: 'DEBUG',
   };
   protected formatter: LOG_FORMATTER;
-  protected static stdout: NodeJS.WritableStream;
-  protected static stderr: NodeJS.WritableStream;
+  protected static stdout: NodeJS.WritableStream = process.stdout;
+  protected static stderr: NodeJS.WritableStream = process.stdout;
   protected static buffer: Record<TARGET, BUF_RECORD[]> = {
     'err': [],
     'out': [],
@@ -53,6 +53,7 @@ export class Logger {
     'err': false,
     'out': false,
   };
+  protected static doubleSlashes = true;
 
   constructor(logLevel: LOG_LEVEL = LOG_LEVEL_NONE, scope: string = '') {
     this.scope = scope;
@@ -67,6 +68,10 @@ export class Logger {
   static replaceLogStreams(stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream): void {
     Logger.stdout = stdout;
     Logger.stderr = stderr;
+  }
+
+  static setDoubleSlashes(enabled: boolean): void {
+    Logger.doubleSlashes = enabled;
   }
 
   static setBufferHeighWatermark(mark: number): void {
@@ -166,17 +171,34 @@ export class Logger {
 
   protected defaultFormatter(ts: number, name: string, scope: string, level: LOG_LEVEL, data?: unknown): string {
     const err = this.dataToErr(data);
-    const input = err ?? data;
-    const isCircular = util.format('%j', input) === '[Circular]';
-    const payload = isCircular ? util.formatWithOptions({ depth: this.depth }, '%O', input) : input;
     const msg: DEFAULT_FORMAT = {
       t: ts,
       l: level,
       s: scope,
       n: name,
-      ... (err ? { e: err } : { d: payload }),
+      ... (err ? { e: err } : { d: data }),
     };
-    return util.format('%j', msg);
+    const str = this.toJson(msg);
+    if (Logger.doubleSlashes) {
+      return this.addDoubleSlashed(str);
+    }
+    return str;
+  }
+
+  protected toJson(msg: DEFAULT_FORMAT): string {
+    try {
+      return JSON.stringify(msg);
+    } catch (e) {
+      if (e instanceof Error && e.name === 'TypeError' && e.message.indexOf('circular structure') >= 0 && msg.d) {
+        msg.d = util.formatWithOptions({ depth: this.depth }, '%O', msg.d);
+        return JSON.stringify(msg);
+      }
+      throw e;
+    }
+  }
+
+  protected addDoubleSlashed(s: string): string {
+    return s.replace(/\\/g, '\\\\');
   }
 
   protected format(name: string, level: LOG_LEVEL, data?: unknown): string {
