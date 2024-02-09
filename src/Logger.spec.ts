@@ -13,7 +13,7 @@ describe('Logger', () => {
     logger.debug('line1\nline2');
     const res1 = JSON.parse((await pr1).toString()) as DEFAULT_FORMAT;
     expect(res1.n).toBe('line1\\nline2');
-    
+
     Logger.setDoubleSlashes(false);
     const pr2 = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.debug('line1\nline2');
@@ -81,10 +81,11 @@ describe('Logger', () => {
     const stream = Duplex.from(streamText);
     const logger = new Logger(LOG_LEVEL_DEBUG, 'circular');
     Logger.replaceLogStreams(stream, stream);
+    Logger.setDoubleSlashes(false);
     const infoPr = new Promise<Buffer>((resolve) => stream.once('data', (d) => resolve(d)));
     logger.log('cycles', { a });
     const infoRes = JSON.parse((await infoPr).toString()) as DEFAULT_FORMAT;
-    expect(infoRes?.d).toBe('{ a: <ref *1> [ A { a: [Circular *1] } ] }');
+    expect(JSON.stringify(infoRes?.d)).toBe('{"a":[{"a":"[Circular]"}]}');
     expect(infoRes?.s).toBe('circular');
     expect(infoRes?.n).toBe('cycles');
     expect(infoRes?.e).not.toBeDefined();

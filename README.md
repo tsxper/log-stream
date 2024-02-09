@@ -5,7 +5,7 @@
 ![npm type definitions](https://img.shields.io/npm/types/@tsxper/log-stream)
 [![NPM Downloads](https://img.shields.io/npm/dt/@tsxper/log-stream.svg?style=flat-square)](https://www.npmjs.com/package/@tsxper/log-stream)
 
-*@tsxper/log-stream* is a TypeScript stream-based NodeJS logger.
+*@tsxper/log-stream* is a TypeScript stream-based logger.
 
 Main features of the *@tsxper/log-stream* are:
 - each log record is represented as JSON;
@@ -19,6 +19,14 @@ Main features of the *@tsxper/log-stream* are:
 - easy streams replacement;
 - circular references safety;
 - easy configuration spreading through cloning;
+
+It supports any stream that implements *WriteStreamSimplified* interface.
+```TypeScript
+interface WriteStreamSimplified {
+  write(str: Uint8Array | string): boolean;
+  once(event: "drain", listener: () => void): unknown;
+}
+```
 
 ## Configuration
 
