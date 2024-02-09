@@ -1,6 +1,6 @@
 {
   "name": "@tsxper/log-stream",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Stream-based NodeJS logger",
   "scripts": {
     "test": "jest",
@@ -41,5 +41,8 @@
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@tsxper/cyclic-object": "^1.0.0"
   }
 }

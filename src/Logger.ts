@@ -1,4 +1,4 @@
-import util from 'util';
+import { toJSON } from '@tsxper/cyclic-object';
 import { EOL } from 'os';
 
 export const LOG_LEVEL_NONE = 0;
@@ -26,6 +26,11 @@ type BUF_RECORD = {
   data: string;
 };
 
+export interface WriteStreamSimplified {
+  write(str: Uint8Array | string): boolean;
+  once(event: "drain", listener: () => void): unknown;
+}
+
 export class Logger {
   protected scope: string;
   protected logLevel: LOG_LEVEL;
@@ -42,8 +47,8 @@ export class Logger {
     [LOG_LEVEL_DEBUG]: 'DEBUG',
   };
   protected formatter: LOG_FORMATTER;
-  protected static stdout: NodeJS.WritableStream = process.stdout;
-  protected static stderr: NodeJS.WritableStream = process.stdout;
+  protected static stdout: WriteStreamSimplified = process.stdout;
+  protected static stderr: WriteStreamSimplified = process.stdout;
   protected static buffer: Record<TARGET, BUF_RECORD[]> = {
     'err': [],
     'out': [],
@@ -65,7 +70,7 @@ export class Logger {
     this.formatter = this.defaultFormatter.bind(this);
   }
 
-  static replaceLogStreams(stdout: NodeJS.WritableStream, stderr: NodeJS.WritableStream): void {
+  static replaceLogStreams(stdout: WriteStreamSimplified, stderr: WriteStreamSimplified): void {
     Logger.stdout = stdout;
     Logger.stderr = stderr;
   }
@@ -186,15 +191,7 @@ export class Logger {
   }
 
   protected toJson(msg: DEFAULT_FORMAT): string {
-    try {
-      return JSON.stringify(msg);
-    } catch (e) {
-      if (e instanceof Error && e.name === 'TypeError' && e.message.indexOf('circular structure') >= 0 && msg.d) {
-        msg.d = util.formatWithOptions({ depth: this.depth }, '%O', msg.d);
-        return JSON.stringify(msg);
-      }
-      throw e;
-    }
+    return toJSON(msg, this.depth + 1);
   }
 
   protected addDoubleSlashed(s: string): string {

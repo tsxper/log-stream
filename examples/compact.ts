@@ -1,3 +1,5 @@
+import { LOG_LEVEL_DEBUG, Logger } from '../src';
 import { log } from './log';
 
-log('compact');
+const logger = new Logger(LOG_LEVEL_DEBUG, 'compact');
+log(logger);

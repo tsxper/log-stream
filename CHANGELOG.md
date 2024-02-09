@@ -1,3 +1,6 @@
+## V 2.1.0
+Detached from NodeJS interfaces. 
+
 ## V 2.0.1
 
 ### Backpressure is supported.

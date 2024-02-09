@@ -1,15 +1,15 @@
-import { LOG_LEVEL_DEBUG, Logger } from '../src/index';
+import { Logger } from '../src/index';
 
 class A {
   prop = 'abc';
   constructor(public a: A[]) { }
 }
 
-export const log = (scope: string) => {
+export const log = (logger: Logger) => {
   const arr: A[] = [];
   const obj = new A(arr);
   arr.push(obj);
-  const logger = new Logger(LOG_LEVEL_DEBUG, scope);
+
   logger.setDepth(1);
   logger.log('Circular refs', arr);
   logger.debug('Debug Message', {
